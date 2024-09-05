@@ -1,0 +1,124 @@
+import pandas as pd
+import joblib
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split, GridSearchCV,cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.inspection import PartialDependenceDisplay
+import shap
+
+# 加载数据
+data = pd.read_csv('E:/xiejh/master_paper/Crop_Environment/FR_Model/maize_yield.csv')
+
+# 选择特征列和目标变量列
+features = [
+    'ET','LAI','NDVI','AT','bdod', 'cec', 'clay', 
+    'TNC', 'ocs', 'pH(H2O)', 'precip',
+    'sand', 'silt', 'soc','NO2','N2O'
+]
+target = 'Yield'
+
+# 处理缺失值（例如，删除缺失值行）
+data = data.dropna(subset=features + [target])
+
+X = data[features]
+y = data[target]
+
+# 划分训练集和测试集
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 超参数调优
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [None, 10, 20, 30],
+    'min_samples_split': [2,4,8],
+    'min_samples_leaf': [1,2, 4],
+    'bootstrap': [True, False]
+}
+
+rf_model = RandomForestRegressor(n_estimators=100, max_depth=20, min_samples_split=5, min_samples_leaf=2, random_state=42)#调优结果输入
+grid_search = GridSearchCV(estimator=rf_model, param_grid=param_grid, cv=5, n_jobs=-1, verbose=2)
+grid_search.fit(X_train, y_train)
+
+# 最优模型
+best_rf_model = grid_search.best_estimator_
+
+# 交叉验证评估
+cv_scores = cross_val_score(best_rf_model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
+cv_mse = -cv_scores.mean()
+cv_r2 = cross_val_score(best_rf_model, X_train, y_train, cv=5, scoring='r2').mean()
+
+print(f'Cross-Validation MSE: {cv_mse}')
+print(f'Cross-Validation R²: {cv_r2}')
+
+# 预测
+y_pred_train = best_rf_model.predict(X_train)
+y_pred_test = best_rf_model.predict(X_test)
+
+# 评估模型
+mse_train = mean_squared_error(y_train, y_pred_train)
+r2_train = r2_score(y_train, y_pred_train)
+
+mse_test = mean_squared_error(y_test, y_pred_test)
+r2_test = r2_score(y_test, y_pred_test)
+
+print(f'Train MSE: {mse_train}')
+print(f'Train R²: {r2_train}')
+print(f'Test MSE: {mse_test}')
+print(f'Test R²: {r2_test}')
+
+#保存评估结果
+evaluation_results_df = pd.DataFrame({
+    'Set': ['Train', 'Test','Cross-Validation'],
+    'MSE': [mse_train, mse_test,cv_mse],
+    'R²': [r2_train, r2_test,cv_r2]
+})
+evaluation_results_df.to_csv('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFR_evaluation_results.csv', index=False)
+
+# 保存预测结果
+output_train = pd.DataFrame({'Actual Yield': y_train, 'Predicted Yield': y_pred_train})
+output_train.to_csv('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFRpredicted_yield_train.csv', index=False)
+
+output_test = pd.DataFrame({'Actual Yield': y_test, 'Predicted Yield': y_pred_test})
+output_test.to_csv('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFRpredicted_yield_test.csv', index=False)
+
+# 保存最佳参数
+best_params = grid_search.best_params_
+best_params_df = pd.DataFrame([best_params])
+best_params_df.to_csv('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFRbest_rf_params.csv', index=False)
+
+# 保存模型
+joblib.dump(best_rf_model, 'E:/xiejh/master_paper/Crop_Environment/FR_Model/RFRbest_rf_model.pkl')
+
+
+
+# 绘制 NO2 的部分依赖图
+features_to_plot = ['N2O']
+fig, ax = plt.subplots(figsize=(10, 6))
+PartialDependenceDisplay.from_estimator(best_rf_model, X_train, features_to_plot, ax=ax)
+plt.title('Partial Dependence of N2O on Maize(kg/ha)')
+plt.ylabel('Partial Dependence on Yield')  # 修改纵坐标标题
+plt.xlabel('N2O')  # 确保横坐标标题为 NO2
+plt.savefig('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFR_partial_dependence_N2O.png')
+plt.show()
+
+# 特征重要性排序
+importances = best_rf_model.feature_importances_
+indices = np.argsort(importances)[::-1]
+
+# 打印每个特征的重要性
+print("Feature ranking:")
+
+for i in range(X_train.shape[1]):
+    print(f"{i + 1}. feature {features[indices[i]]} ({importances[indices[i]]})")
+
+# 可视化特征重要性
+plt.figure(figsize=(10, 6))
+sns.barplot(x=importances[indices], y=[features[i] for i in indices])
+plt.title('Feature Importances')
+plt.xlabel('Relative Importance')
+plt.ylabel('Features')
+plt.savefig('E:/xiejh/master_paper/Crop_Environment/FR_Model/RFR_feature_importance.png')
+plt.show()
