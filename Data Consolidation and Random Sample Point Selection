@@ -1,0 +1,493 @@
+var table = ee.FeatureCollection("projects/ee-yihui20240313/assets/Maize_shp"),
+    image2 = ee.Image("projects/ee-yihui20240313/assets/N2O_2020Agri"),
+    image = ee.Image("projects/ee-yihui20240313/assets/spam2020_v1r0_global_Y_MAIZ_R"),
+    table2 = ee.FeatureCollection("projects/ee-yihui20240313/assets/ChinaSHP");
+//CN map
+var CN = table2;
+var styling = {color:'black',fillColor:'00000000'};
+Map.addLayer(CN.style(styling),{},"CN");
+
+//研究区域 
+var roi = table;
+Map.centerObject(roi,10);
+var styling = {color:'red',fillColor:'00000000'};
+Map.addLayer(roi.style(styling),{},"roi");
+//Map.addLayer(roi.style(styling),{},"geometry")///
+
+//划分土地利用///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 加载MODIS土地覆盖数据集
+var modisLandCover = ee.ImageCollection('MODIS/061/MCD12Q1')
+  .filterDate('2020-01-01', '2020-12-31')
+  .select('LC_Type1');
+
+// 设置感兴趣区域（ROI），这里是中国的一个示例区域
+var roi = table;
+
+// 筛选和裁剪数据以匹配感兴趣区域
+var modisImage = modisLandCover.mean().clip(roi);
+
+// 定义土地覆盖分类的可视化参数
+var landCoverVis = {
+  min: 1.0,
+  max: 17.0,
+  palette: [
+    '05450a', '086a10', '54a708', '78d203', '009900', 'c6b044', 'dcd159',
+    'dade48', 'fbff13', 'b6ff05', '27ff87', 'c24f44', 'a5a5a5', 'ff6d4c',
+    '69fff8', 'f9ffa4', '1c0dff'
+  ],
+};
+
+// 定义耕地类型的掩码（MODIS分类代码12和14）
+var cropland = modisImage.eq(12).or(modisImage.eq(14));
+
+// 应用掩码以仅保留耕地类型
+var croplandImage = modisImage.updateMask(cropland).uint8();
+
+// 在地图上添加图层进行可视化
+Map.centerObject(roi, 5);
+Map.addLayer(croplandImage, landCoverVis, 'Cropland');
+
+
+// 计算NDVI ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 加载 modis 数据集
+var dataset = ee.ImageCollection('MODIS/061/MOD13Q1')
+                  .select('NDVI');
+
+
+// 设置感兴趣区域和时间范围
+var roi = table
+var startDate = '2020-05-01';
+var endDate = '2020-09-30';
+var ndvi = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean()
+                         .multiply(0.0001); // 将NDVI值除以10000;
+
+// 筛选图像集合
+var filteredNO2 = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+// 可视化参数
+var visParams = {
+  min: 0,
+  max: 1,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(ndvi.clip(roi),visParams,'ndvi');
+
+
+//计算NO2///////////////////////////////////////////////////////////////////////////////////////////////////
+// 加载 Sentinel-5P TROPOMI NO2 数据集
+var dataset = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_NO2')
+  .select('tropospheric_NO2_column_number_density');
+
+// 设置感兴趣区域和时间范围
+var roi = table
+var startDate = '2020-5-01';
+var endDate = '2020-09-30';
+
+// 筛选图像集合
+var filteredNO2 = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+
+// 可视化参数
+var visParams = {
+  min: 0,
+  max: 0.00002,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(filteredNO2.clip(roi), visParams, 'NO2 Column Density');
+
+// 打印信息
+print('Filtered NO2 Image:', filteredNO2);
+
+//获取土壤总氮含量 (2020年)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/nitrogen_mean");
+var roi=table;
+
+var nitrogen=dataset.clip(roi).select('nitrogen_0-5cm_mean')
+var visualization = {
+  bands: ['nitrogen_0-5cm_mean'],
+  min: 1000.0,
+  max: 10000.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(nitrogen, visualization, "tN content(cg / kg)");
+print(nitrogen)
+
+//获取土壤ocs含量 (2020年)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/ocs_mean");
+var roi=table;
+
+var ocs=dataset.clip(roi).select('ocs_0-30cm_mean')
+var visualization = {
+  bands: ['ocs_0-30cm_mean'],
+  min: 20.0,
+  max: 200.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(ocs, visualization, "ocs(dg / kg)");
+print(ocs)
+
+//获取土壤体积密度含量 (2020年)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/bdod_mean");
+var roi=table;
+
+var bdod=dataset.clip(roi).select('bdod_0-5cm_mean');
+var visualization = {
+  bands: ['bdod_0-5cm_mean'],
+  min: 50.0,
+  max: 200.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7);
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(bdod, visualization, "bdod(cg/cm^3)");
+print(bdod);
+
+//获取阳离子交换浓度(pH=7)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/cec_mean");
+var roi=table;
+
+var cec=dataset.clip(roi).select('cec_0-5cm_mean');
+var visualization = {
+  bands: ['cec_0-5cm_mean'],
+  min: 150.0,
+  max: 400.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7);
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(cec, visualization, "cec(%)");
+print(cec);
+
+//获取粘土含量2021 ////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/clay_mean");
+var roi=table;
+
+var clay=dataset.clip(roi).select('clay_0-5cm_mean');
+var visualization = {
+  bands: ['clay_0-5cm_mean'],
+  min: 100.0,
+  max: 400.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7);
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(clay, visualization, "clay(g/kg)");
+print(clay);
+
+//获取砂粒含量2021 ////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/sand_mean");
+var roi=table;
+
+var sand=dataset.clip(roi).select('sand_0-5cm_mean');
+var visualization = {
+  bands: ['sand_0-5cm_mean'],
+  min: 70.0,
+  max: 700.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7);
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(sand, visualization, "sand(g/kg)");
+print(sand);
+
+//获取粉粒含量 ////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/silt_mean");
+var roi=table;
+
+var silt=dataset.clip(roi).select('silt_0-5cm_mean');
+var visualization = {
+  bands: ['silt_0-5cm_mean'],
+  min: 140.0,
+  max: 700.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7);
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(silt, visualization, "silt(g/kg)");
+print(silt);
+
+//获取土壤soc含量 (2021年)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/soc_mean");
+var roi=table;
+
+var soc=dataset.clip(roi).select('soc_0-5cm_mean')
+var visualization = {
+  bands: ['soc_0-5cm_mean'],
+  min: 50.0,
+  max: 2000.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(soc, visualization, "soc(dg / kg)");
+print(soc)
+
+//获取phh2o含量 (2021年)////////////////////////////////////////////////////////////////////////////////////////////////
+//load soil layers 
+var dataset = ee.Image("projects/soilgrids-isric/phh2o_mean");
+var roi=table;
+
+var phh2o=dataset.clip(roi).select('phh2o_0-5cm_mean')
+var visualization = {
+  bands: ['phh2o_0-5cm_mean'],
+  min: 50.0,
+  max: 2000.0,
+  palette: ["ffef29","0000ff"]
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(phh2o, visualization, "phh2o");
+print(soc)
+
+/////降水precipition///////////////////////////////////////////////////////////////////////////////////
+dataset = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+              .select('precipitation')
+
+var roi = table
+var startDate = '2020-05-01';
+var endDate = '2020-09-30';
+var prec = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+// 可视化参数
+var visParams = {
+  min: 0,
+  max: 200,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(prec.clip(roi),visParams,'precipitation');
+
+
+/////蒸发Evapotranspiration,ET///////////////////////////////////////////////////////////////////////////////////
+dataset = ee.ImageCollection('MODIS/006/MOD16A2')
+              .select('ET');
+
+var roi = table;
+var startDate = '2020-12-01';
+var endDate = '2021-05-31';
+var ET = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+// 可视化参数
+var visParams = {
+  min: 20,
+  max: 200,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(ET.clip(roi),visParams,'ET');
+
+///// 平均温度（Average Temperature）=k*0.02-273.15/////////////////////////////////////////////////////////////////////////////
+dataset = ee.ImageCollection('MODIS/006/MOD11A2')
+              .select('LST_Day_1km');
+var roi = table;
+var startDate = '2020-12-01';
+var endDate = '2021-05-31';
+var AT = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+// 可视化参数
+var visParams = {
+  min: 10000,
+  max: 20000,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(AT.clip(roi),visParams,'Land Surface Temperature');
+
+/////叶面积指数(LAI）/////////////////////////////////////////////////////////////////////////////
+dataset = ee.ImageCollection('MODIS/006/MOD15A2H')
+              .select('Lai_500m');
+var roi = table;
+var startDate = '2020-05-01';
+var endDate = '2020-09-30';
+var LAI = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+// 可视化参数
+var visParams = {
+  min: 0,
+  max: 30,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(LAI.clip(roi),visParams,'Leaf Area Index');
+
+/////Corp_yield////////////////////////////////////////////////////////////////////////////
+var cropyield = image;
+
+var visualization = {
+  min: 0,
+  max: 10000,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(cropyield.clip(roi), visualization, "maize_yiled");
+print(cropyield);
+
+//////////N2O////////////////////////////////////////////////////////////////////////
+var roi=table;
+var N2O=image2.clip(roi);
+var vispop = {
+  min: -10,
+  max: 10,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+Map.addLayer(N2O,vispop, 'N2O',false);
+Map.centerObject(roi,7)
+print('N2O:', N2O);
+
+
+//生成随机点///////////////////////////////////////////////////////////////////////////////////////// ////// //
+// Generate random points within the sample area.
+var points = ee.FeatureCollection.randomPoints({
+region: roi,
+points:2500,
+seed: 1234}
+);
+print(points,"points");
+Map.addLayer(points, {}, "Points" , false);
+
+
+// Add bands of elevation and NAIP.
+var ndviElev = ndvi
+  .addBands(filteredNO2)
+  .addBands(nitrogen)
+  .addBands(ocs)
+  .addBands(cropyield)
+  .addBands(cec)
+  .addBands(bdod)
+  .addBands(clay)
+  .addBands(sand)
+  .addBands(silt)
+  .addBands(phh2o)
+  .addBands(soc)
+  .addBands(prec)
+  .addBands(ET)
+  .addBands(AT)
+  .addBands(N2O)
+  .addBands(LAI);
+print(ndviElev, "Multi band image");
+
+
+// Extract values to points.
+var samples = ndviElev.sampleRegions({
+  collection: points,
+  scale: 30 ,
+  geometries: true
+});
+print(samples,'samples');
+Map.addLayer(samples,{}, "samples" , false);
+
+
+
+// Export presence points.////////////////////////////////////////////////////////////////////////////////////////////////////
+Export.table.toDrive({
+  collection: samples,
+  description:'Yield_RFwheat',
+  fileFormat: 'csv'
+});
+
+Export.image.toDrive({
+    image:  filteredNO2,  //分类结果
+    description: 'NO2_soybean',  //文件名
+    folder: 'result',
+    scale: 250,  //分辨率
+    region: roi,  //兴趣区域
+    maxPixels:34e10
+});
+Export.image.toDrive({
+    image:  ndvi,  //分类结果
+    description: 'ndvi_soybean',  //文件名
+    folder: 'result',
+    scale: 250,  //分辨率
+    region: roi,  //兴趣区域
+    maxPixels:34e10
+});
+/////image import是////////////////////////////////////////////////////////////////////////////
+var dataset = image;
+
+var visualization = {
+  min: 0,
+  max: 10000,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+Map.centerObject(roi,7)
+var styling = {color:"red",fillColor:"00000000"};
+Map.addLayer(image,{}, "import_test" , false);
+print(dataset);
+
+//NO2 ratio/////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 设置阈值范围
+var lowerThreshold = 0.00001;
+var upperThreshold = 0.00002;
+
+// 计算浓度在阈值范围内的区域
+var no2InThresholdRange = filteredNO2.gt(lowerThreshold).and(filteredNO2.lte(upperThreshold));
+
+// 计算总面积（以平方米为单位）
+var pixelArea = ee.Image.pixelArea();
+
+// 计算浓度在阈值范围内的总面积
+var areaInThresholdRange = no2InThresholdRange.multiply(pixelArea).reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: 1000,
+  maxPixels: 1e9
+}).get('tropospheric_NO2_column_number_density');
+
+// 计算总面积
+var totalArea = pixelArea.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: 1000,
+  maxPixels: 1e9
+}).get('area');
+
+// 计算面积占比
+var areaRatio = ee.Number(areaInThresholdRange).divide(totalArea).multiply(100);
+
+// 打印面积占比
+print('NO2 浓度在 0.00001 到 0.00002 之间的面积占比 (%)：', areaRatio);
+
+// 将结果导出为 CSV 文件
+var feature = ee.Feature(null, {'area_ratio_percent': areaRatio});
+var featureCollection = ee.FeatureCollection([feature]);
+
+Export.table.toDrive({
+  collection: featureCollection,
+  description: 'NO2_Area_Ratio_Export',
+  fileFormat: 'CSV'
+});
