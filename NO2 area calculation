@@ -1,0 +1,86 @@
+var table = ee.FeatureCollection("projects/ee-yihui20240313/assets/ChinaSHP"),
+    table2 = ee.FeatureCollection("projects/ee-yihui20240313/assets/Simplified_Cropland_maize1");
+//CN map
+var CN = table;
+var styling = {color:'black',fillColor:'00000000'};
+Map.addLayer(CN.style(styling),{},"CN");
+
+//研究区域 
+var roi = table2;
+Map.centerObject(roi,10);
+var styling = {color:'red',fillColor:'00000000'};
+Map.addLayer(roi.style(styling),{},"roi");
+//Map.addLayer(roi.style(styling),{},"geometry")///
+
+//计算NO2///////////////////////////////////////////////////////////////////////////////////////////////////
+// 加载 Sentinel-5P TROPOMI NO2 数据集
+var dataset = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_NO2')
+  .select('tropospheric_NO2_column_number_density');
+
+// 设置感兴趣区域和时间范围
+var roi = table2
+var startDate = '2020-5-01';
+var endDate = '2020-09-30';
+
+// 筛选图像集合
+var filteredNO2 = dataset.filterBounds(roi)
+                         .filterDate(startDate, endDate)
+                         .mean();
+
+// 可视化参数
+var visParams = {
+  min: 0,
+  max: 0.000035,
+  palette: ['blue', 'green', 'yellow', 'red']
+};
+
+// 在地图上添加图层
+Map.centerObject(roi, 2);
+Map.addLayer(filteredNO2.clip(roi), visParams, 'NO2 Column Density');
+
+// 打印信息
+print('Filtered NO2 Image:', filteredNO2);
+
+
+//NO2 ratio/////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 设置阈值范围
+var lowerThreshold = 0.000012;
+var upperThreshold = 0.000035;
+
+// 计算浓度在阈值范围内的区域
+var no2InThresholdRange = filteredNO2.gt(lowerThreshold).and(filteredNO2.lte(upperThreshold));
+
+// 计算总面积（以平方米为单位）
+var pixelArea = ee.Image.pixelArea();
+
+// 计算浓度在阈值范围内的总面积
+var areaInThresholdRange = no2InThresholdRange.multiply(pixelArea).reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: 1000,
+  maxPixels: 1e9
+}).get('tropospheric_NO2_column_number_density');
+
+// 计算总面积
+var totalArea = pixelArea.reduceRegion({
+  reducer: ee.Reducer.sum(),
+  geometry: roi,
+  scale: 1000,
+  maxPixels: 1e9
+}).get('area');
+
+// 计算面积占比
+var areaRatio = ee.Number(areaInThresholdRange).divide(totalArea).multiply(100);
+
+// 打印面积占比
+print('NO2 浓度在 0.00001 到 0.00002 之间的面积占比 (%)：', areaRatio);
+
+// 将结果导出为 CSV 文件
+var feature = ee.Feature(null, {'area_ratio_percent': areaRatio});
+var featureCollection = ee.FeatureCollection([feature]);
+
+Export.table.toDrive({
+  collection: featureCollection,
+  description: 'NO2_Area_Ratio_Export',
+  fileFormat: 'CSV'
+});
