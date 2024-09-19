@@ -1,0 +1,141 @@
+import pandas as pd
+import joblib
+import optuna
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
+from xgboost import XGBRegressor
+import shap 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from scipy.optimize import curve_fit
+
+# 加载数据
+data = pd.read_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/maize/maize_yieldS.csv')
+
+# 选择特征列和目标变量列
+features = [
+    'ET', 'LAI', 'NDVI', 'AT', 'bdod', 'cec', 'clay', 
+    'TNC', 'ocs', 'pH(H2O)', 'precip',
+    'sand', 'silt', 'soc', 'NO2', 'N2O'
+]
+target = 'Yield'
+
+# 处理缺失值（例如，删除缺失值行）
+data = data.dropna(subset=features + [target])
+
+# 提取特征和目标变量
+X = data[features]
+y = data[target]
+
+# 特征缩放
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# 划分训练集和测试集
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# 将特征名称 'NO2' 和 'N2O' 修改为带下角标的格式，使用 LaTeX 语法
+features_latex = [
+    'ET', 'LAI', 'NDVI', 'AT', 'Bdod', 'CEC', 'Clay', 
+    'TNC', 'OCS', 'pH($\mathrm{H}_{2}\mathrm{O}$)', 'Precip',
+    'Sand', 'Silt', 'SOC', '$\mathrm{NO}_{2}$', '$\mathrm{N}_{2}\mathrm{O}$'
+]
+
+# 使用Optuna进行超参数优化，训练XGB模型
+def objective(trial):
+    param = {
+        'objective': 'reg:squarederror',
+        'eval_metric': 'rmse',
+        'booster': 'gbtree',
+        'n_estimators': trial.suggest_int('n_estimators', 100, 300),
+        'max_depth': trial.suggest_int('max_depth', 3, 10),
+        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+        'subsample': trial.suggest_float('subsample', 0.6, 1.0),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 1.0),
+        'lambda': trial.suggest_float('lambda', 1e-8, 1.0, log=True),
+        'alpha': trial.suggest_float('alpha', 1e-8, 1.0, log=True)
+    }
+    model = XGBRegressor(**param)
+    cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
+    cv_mse = -cv_scores.mean()
+    return cv_mse
+
+study = optuna.create_study(direction='minimize')
+study.optimize(objective, n_trials=100)
+
+best_params = study.best_params
+best_xgb_model = XGBRegressor(**best_params)
+best_xgb_model.fit(X_train, y_train)
+
+# 交叉验证评估
+cv_scores = cross_val_score(best_xgb_model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
+cv_mse = -cv_scores.mean()
+cv_r2 = cross_val_score(best_xgb_model, X_train, y_train, cv=5, scoring='r2').mean()
+
+cv_results_df = pd.DataFrame({
+    'Cross-Validation MSE': [cv_mse],
+    'Cross-Validation R²': [cv_r2],
+    'Cross-Validation scores': [cv_scores],
+})
+cv_results_df.to_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/XGBcross_validation_results.csv', index=False)
+
+print(f'Cross-Validation MSE: {cv_mse}')
+print(f'Cross-Validation R²: {cv_r2}')
+
+# 预测
+y_pred_train = best_xgb_model.predict(X_train)
+y_pred_test = best_xgb_model.predict(X_test)
+
+# 评估模型
+mse_train = mean_squared_error(y_train, y_pred_train)
+r2_train = r2_score(y_train, y_pred_train)
+
+mse_test = mean_squared_error(y_test, y_pred_test)
+r2_test = r2_score(y_test, y_pred_test)
+
+evaluation_results_df = pd.DataFrame({
+    'Set': ['Train', 'Test', 'Cross-Validation'],
+    'MSE': [mse_train, mse_test, cv_mse],
+    'R2': [r2_train, r2_test, cv_r2]
+})
+evaluation_results_df.to_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/XGB_evaluation_results.csv', index=False)
+
+print(f'Train MSE: {mse_train}')
+print(f'Train R²: {r2_train}')
+print(f'Test MSE: {mse_test}')
+print(f'Test R²: {r2_test}')
+
+# 保存预测结果
+output_train = pd.DataFrame({'Actual Yield': y_train, 'Predicted Yield': y_pred_train})
+output_train.to_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/XGBpredicted_yield_train.csv', index=False)
+
+output_test = pd.DataFrame({'Actual Yield': y_test, 'Predicted Yield': y_pred_test})
+output_test.to_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/XGBpredicted_yield_test.csv', index=False)
+
+# 保存最佳参数
+best_params_df = pd.DataFrame([best_params])
+best_params_df.to_csv('E:/xiejh/master_paper/Crop_Environment/XGB_Model/best_xgb_params.csv', index=False)
+
+# 保存模型
+joblib.dump(best_xgb_model, 'E:/xiejh/master_paper/Crop_Environment/XGB_Model/best_xgb_model.pkl')
+
+# SHAP解释
+explainer = shap.Explainer(best_xgb_model)
+shap_values = explainer(X_test)
+
+# 使用更新后的特征名称列表可视化SHAP值
+shap.summary_plot(shap_values, X_test, feature_names=features_latex)
+plt.savefig('E:/xiejh/master_paper/Crop_Environment/XGB_Model/shap_summary_plot.png')
+
+# 选择你要绘制dependence plot的特征
+feature = '$\mathrm{NO}_{2}$'  # 使用带下角标的特征名称
+
+# 绘制dependence plot
+shap.dependence_plot(feature, shap_values.values, X_test, feature_names=features_latex, interaction_index='$\mathrm{NO}_{2}$')
+plt.ylabel('SHAP value for $\mathrm{NO}_{2}$ on Maize')
+
+# 保存并显示图形
+plt.savefig('E:/xiejh/master_paper/Crop_Environment/XGB_Model/shap_dependence_plot.png')
+plt.show()
