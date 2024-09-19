@@ -1,0 +1,43 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.interpolate import make_interp_spline
+
+# 读取CSV数据
+data = pd.read_csv('E:/xiejh/master_paper/Crop_Environment/NDVI_average/Monthly_NDVI_Average_maize.csv')
+
+# 解析日期
+data['date'] = pd.to_datetime(data['date'], format='mixed')
+
+# 创建图表
+plt.figure(figsize=(10, 6))
+
+# 平滑曲线
+dates_numeric = data['date'].map(pd.Timestamp.toordinal).values
+spl = make_interp_spline(dates_numeric, data['NDVI'], k=3)  # k=3为三次样条插值
+dates_smooth = np.linspace(dates_numeric.min(), dates_numeric.max(), 500)
+ndvi_smooth = spl(dates_smooth)
+
+# 转换平滑的日期
+dates_smooth_converted = pd.to_datetime(dates_smooth - 719163, unit='D')  # '1970-01-01' corresponds to 719163 in Julian
+
+# 绘制平滑曲线
+plt.plot(dates_smooth_converted, ndvi_smooth, color='green', linestyle='-', label='NDVI')
+
+# 添加背景颜色
+plt.axvspan(pd.to_datetime('2020-05-01'), pd.to_datetime('2020-09-30'), color='yellow', alpha=0.3, label='V3 stage to maturity in maize')
+plt.axvspan(pd.to_datetime('2020-12-01'), pd.to_datetime('2021-04-30'), color='lightblue', alpha=0.3, label='V3 stage to maturity in wheat')
+
+# 图表设置
+plt.title('Monthly NDVI Average Over Time on Maize Crop Areas ')
+plt.xlabel('Date')
+plt.ylabel('NDVI')
+plt.grid(True)
+plt.legend()
+
+# 设置X轴日期标签的旋转角度
+plt.xticks(rotation=45)
+
+# 保存为PNG文件
+plt.savefig('NDVI_Monthly_Average.png', dpi=300)
+plt.show()
