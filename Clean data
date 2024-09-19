@@ -1,0 +1,70 @@
+import pandas as pd
+import numpy as np
+import pandas as pd
+import numpy as np
+from scipy.stats import zscore
+
+# 导入文件路径
+file_path = 'E:/xiejh/master_paper/Crop_Environment/XGB_Model/soybean/soybean_yield.csv'
+data = pd.read_csv(file_path)
+
+# 定义清洗函数，通过标准差过滤异常值
+def remove_outliers_by_std(df, column, threshold=3):
+    mean = df[column].mean()
+    std = df[column].std()
+    lower_limit = mean - threshold * std
+    upper_limit = mean + threshold * std
+    return df[(df[column] >= lower_limit) & (df[column] <= upper_limit)]
+
+# 需要清洗的列
+columns_to_clean = ['ET', 'AT', 'LAI', 'NDVI', 'Yield', 'N2O', 'bdod', 'cec', 'clay', 'TNC', 'ocs', 'pH(H2O)', 'precip', 'sand', 'silt', 'soc', 'NO2']
+
+# 对每个列进行清洗
+for column in columns_to_clean:
+    data = remove_outliers_by_std(data, column)
+
+# 导出清洗后的数据为CSV文件
+output_path = 'E:/xiejh/master_paper/Crop_Environment/XGB_Model/soybean/soybean_yieldS.csv'
+data.to_csv(output_path, index=False)
+
+print(f"所有特征清洗后的数据已导出到 {output_path}")
+
+# 定义Z-Score清洗函数
+def remove_outliers_by_zscore(df, column, threshold=3):
+    z_scores = zscore(df[column])
+    return df[np.abs(z_scores) < threshold]
+
+# 列出需要清洗的所有列
+columns_to_clean = ['ET', 'AT', 'LAI', 'NDVI', 'Yield', 'N2O', 'bdod', 'cec', 'clay', 'TNC', 'ocs', 'pH(H2O)', 'precip', 'sand', 'silt', 'soc', 'NO2']
+
+# 对每个列应用 Z-Score 清洗
+for column in columns_to_clean:
+    data = remove_outliers_by_zscore(data, column)
+
+# 导出清洗后的数据为CSV文件
+output_path_zscore = 'E:/xiejh/master_paper/Crop_Environment/XGB_Model/soybean/soybean_yieldZ.csv'
+data.to_csv(output_path_zscore, index=False)
+
+print(f"Z-Score清洗后的数据已导出到 {output_path_zscore}")
+
+# 定义IQR清洗函数
+def remove_outliers_by_iqr(df, column):
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    return df[(df[column] >= lower_bound) & (df[column] <= upper_bound)]
+
+# 列出需要清洗的所有列
+columns_to_clean = ['ET', 'AT', 'LAI', 'NDVI', 'Yield', 'N2O', 'bdod', 'cec', 'clay', 'TNC', 'ocs', 'pH(H2O)', 'precip', 'sand', 'silt', 'soc', 'NO2']
+
+# 对每个列应用 IQR 清洗
+for column in columns_to_clean:
+    data = remove_outliers_by_iqr(data, column)
+
+# 导出清洗后的数据为CSV文件
+output_path_iqr = 'E:/xiejh/master_paper/Crop_Environment/XGB_Model/soybean/soybean_yieldI.csv'
+data.to_csv(output_path_iqr, index=False)
+
+print(f"IQR清洗后的数据已导出到 {output_path_iqr}")
