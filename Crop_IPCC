@@ -1,0 +1,71 @@
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(broom)
+
+# 假设数据已经导入
+data = Wheat_IPCC
+
+# 数据重塑为长格式
+data_long <- data %>%
+  pivot_longer(cols = BAU_A12030:HN_B12050, 
+               names_to = c("Group", "IPCC"), 
+               names_pattern = "(BAU|LN|HN)_(A12030|A12050|B12030|B12050)", 
+               values_to = "Yield")
+
+# 检查转换后的数据格式
+head(data_long)
+
+# 使用 ANOVA 分析组间差异
+anova_results <- aov(Yield ~ Group * IPCC, data = data_long)
+summary_anova <- summary(anova_results)
+
+# 整理 ANOVA 结果为数据框
+tidy_anova <- tidy(anova_results)
+
+# 根据 p 值添加显著水平标记
+tidy_anova <- tidy_anova %>%
+  mutate(Significance = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01 ~ "**",
+    p.value < 0.05 ~ "*",
+    p.value < 0.1 ~ ".",
+    TRUE ~ ""
+  ))
+
+# 打印添加显著水平后的 ANOVA 结果
+print(tidy_anova)
+
+# 保存 ANOVA 结果到 CSV 文件
+write.csv(tidy_anova, "E:/xiejh/master_paper/Crop_Environment/IPCC/Wheat_significance.csv", row.names = FALSE)
+
+# 计算均值、标准差和 CV（变异系数）
+cv_data <- data_long %>%
+  group_by(IPCC, Group) %>%
+  summarise(
+    Mean_Yield = mean(Yield, na.rm = TRUE),  # 计算均值
+    SD_Yield = sd(Yield, na.rm = TRUE)       # 计算标准差
+  ) %>%
+  mutate(CV = (SD_Yield / Mean_Yield) * 100)  # 计算变异系数（CV）
+
+# 显示 CV 结果#IPCC 显示 CV 结果
+print(cv_data)
+
+# 保存 CV 结果到 CSV 文件
+write.csv(cv_data, "E:/xiejh/master_paper/Crop_Environment/IPCC/Wheat_cv_data.csv", row.names = FALSE)
+
+# 绘制分组箱型图
+ggplot(data_long, aes(x = IPCC, y = Yield, fill = Group)) +
+  geom_boxplot(outlier.shape = NA,coef = 0.3) +  # 不显示奇异值,缩短上下须，默认系数为1.5，这里设置为0.5
+  labs( x = "IPCC", y = "Predicted Yield (kg/ha)") +
+  scale_fill_manual(values = c("BAU" = "blue", "LN" = "green", "HN" = "red")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1),  # 调整x轴标签字号大小
+    axis.text.y = element_text(size = 12),  # 调整y轴标签字号大小
+    axis.title.x = element_text(size = 12),  # 调整x轴标题字号大小
+    axis.title.y = element_text(size = 12),  # 调整y轴标题字号大小
+    plot.title = element_text(size = 12)  # 调整整体标题的字号大小
+  ) +
+  theme(
+    legend.position = "bottom")+ylim(4500, 5500)# 调整上下限
